@@ -1,0 +1,25 @@
+{
+  "single_transaction": {
+    "trans_date_trans_time": "2020-06-21 22:06:39",
+    "cc_num": "3560725013359375",
+    "merchant": "fraud_Hamill-D'Amore",
+    "category": "health_fitness",
+    "amt": 894.25,
+    "first": "Brooke",
+    "last": "Smith",
+    "gender": "F",
+    "street": "63542 Luna Brook Apt. 012",
+    "city": "Notrees",
+    "state": "TX",
+    "zip": "79759",
+    "lat": 31.8599,
+    "long": -102.7413,
+    "city_pop": 23,
+    "job": "Cytogeneticist",
+    "dob": "1969-09-15",
+    "trans_num": "16bf2e46c54369a8eab2214649506425",
+    "unix_time": 1371852399,
+    "merch_lat": 32.575873,
+    "merch_long": -102.60429
+  }
+}

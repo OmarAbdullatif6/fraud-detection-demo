@@ -1,0 +1,31 @@
+# Large Datasets & Model Binaries (exceeds GitHub 100MB limit)
+*.csv
+fraudTest.csv
+*.pkl
+*.joblib
+*.onnx
+*.h5
+*.pt
+*.pth
+
+# Python Environment
+__pycache__/
+*.py[cod]
+*$py.class
+venv/
+.venv/
+env/
+*.egg-info/
+.pytest_cache/
+
+# Node & Frontend Build Artifacts
+frontend/node_modules/
+frontend/dist/
+frontend/.env.local
+frontend/*.log
+
+# OS & Editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
