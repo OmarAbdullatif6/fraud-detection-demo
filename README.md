@@ -28,11 +28,12 @@ fraud-detection-demo/
 │   ├── package.json
 │   └── vite.config.js
 │
-├── backend/                      # 🐍 Python ML Inference Service Contract (Prepared for later)
-│   ├── README.md                 # API documentation, endpoint schemas & quick-start guide
-│   ├── schema.py                 # Pydantic v2 data models matching fraudTest.csv features
-│   ├── fastapi_app_stub.py       # Ready-to-use FastAPI starter microservice
-│   └── sample_payload.json       # Example request payloads
+├── backend/                      # 🐍 FastAPI service running the trained model
+│   ├── Model/                    # Preprocessor, Isolation Forest & autoencoder artifacts
+│   ├── main.py                   # Health, single-prediction & batch-prediction endpoints
+│   ├── predictor.py              # Feature engineering and ensemble inference
+│   ├── requirements.txt          # Backend Python dependencies
+│   └── README.md                 # API documentation and setup guide
 │
 └── fraudTest.csv                 # Benchmark dataset (555,719 rows)
 ```
@@ -51,23 +52,18 @@ npm run dev
 
 Open **`http://localhost:5173`** in your browser.
 
-> **💡 Offline Simulation Active**: The frontend works 100% out-of-the-box! Even without the backend running, the built-in AI simulation engine evaluates transactions using realistic mathematical heuristics and weights derived from `fraudTest.csv`.
+> **Offline demo mode**: If the backend is unreachable, the frontend shows locally simulated results. A live result is marked **Python API** and includes model diagnostics.
 
----
+### 2. Running the trained-model backend
 
-### 2. Connecting the Backend (When you are ready)
-
-In a separate terminal:
+In a second terminal:
 
 ```bash
 cd backend
-python -m venv venv
-# Windows:
-.\venv\Scripts\activate
-# Install requirements:
-pip install fastapi uvicorn pydantic scikit-learn
-# Run starter API:
-python fastapi_app_stub.py
+python -m pip install -r requirements.txt
+python main.py
 ```
 
-The frontend will automatically detect the backend at `http://localhost:8000` and switch the connection indicator from **"Simulation Mode Active"** to **"Backend: Connected"**.
+The API starts at `http://localhost:8000`. Open `http://localhost:8000/docs` to inspect the endpoints. With the frontend running at `http://localhost:5173`, single transactions are sent to `POST /api/predict` and batch uploads to `POST /api/batch-predict`. The service validates the request, prepares the model features, runs the Isolation Forest and autoencoder, and returns prediction scores and explanations to the UI.
+
+The trained model artifacts are expected in `backend/Model/`. The frontend endpoint can be changed from **Backend Endpoint Settings**.

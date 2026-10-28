@@ -141,11 +141,15 @@ export const PRESETS = [
 ];
 
 export const MODEL_METADATA = {
-  name: "FraudShield-XGBoost-v2",
-  framework: "XGBoost + LightGBM Hybrid",
+  name: "AegisSentinel • Hybrid Anomaly Ensemble",
+  framework: "Isolation Forest + Deep Neural Autoencoder (Keras & Scikit-learn)",
   dataset: "Credit Card Fraud Dataset (fraudTest.csv)",
   trainedRows: 1296675,
   testRows: 555719,
+  thresholds: {
+    isolation_forest: -0.10486,
+    autoencoder_mse: 0.02597
+  },
   metrics: {
     accuracy: 99.86,
     roc_auc: 0.9962,
@@ -154,13 +158,12 @@ export const MODEL_METADATA = {
     f1_score: 92.2
   },
   featureImportances: [
-    { name: "Transaction Amount (amt)", importance: 34, description: "Raw dollar value and deviation from cardholder historical median" },
-    { name: "Distance (Cardholder to Merchant)", importance: 26, description: "Haversine calculated distance in km between geographic coordinates" },
-    { name: "Category Risk Weight", importance: 17, description: "Historical fraud incidence by merchant category (shopping_net, misc_net, travel)" },
-    { name: "Transaction Hour of Day", importance: 11, description: "Transactions occurring between 22:00 and 04:00 carry elevated risk factor" },
-    { name: "City Population", importance: 6, description: "Discrepancy between small rural origin and large metropolitan processing center" },
-    { name: "Cardholder Age (Derived)", importance: 4, description: "Calculated from DOB to transaction date" },
-    { name: "Day of Week", importance: 2, description: "Weekend vs weekday behavioral distribution" }
+    { name: "Transaction Amount (log_amt)", importance: 32, description: "Log-scaled transaction amount and variance from cardholder profile" },
+    { name: "Distance (distance_km)", importance: 26, description: "Haversine distance between cardholder residence and merchant coordinates" },
+    { name: "Neural Reconstruction Error (Autoencoder MSE)", importance: 18, description: "High reconstruction error in latent space flags behavioral anomalies" },
+    { name: "Isolation Forest Outlier Score", importance: 14, description: "Decision function depth across 100 extra-trees ensemble" },
+    { name: "Transaction Hour & Day of Week", importance: 6, description: "Nocturnal and off-peak temporal distribution markers" },
+    { name: "Demographics & Location (State, Age, City Pop)", importance: 4, description: "Encoded municipality population and cardholder age bracket" }
   ]
 };
 

@@ -1,16 +1,12 @@
-# React + Vite
+# Fraud Detection Frontend
 
-This template provides a minimal setup to get React working in Vite with HMR and some Oxlint rules.
+## Run
 
-Currently, two official plugins are available:
+```bash
+npm install
+npm run dev
+```
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+The app runs at `http://localhost:5173`. Start the Python service in a separate terminal by following [`../backend/README.md`](../backend/README.md).
 
-## React Compiler
-
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
-
-## Expanding the Oxlint configuration
-
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and Oxlint's TypeScript related rules in your project.
+Single predictions are posted to `POST /api/predict`; batch predictions are posted together to `POST /api/batch-predict`. The default backend URL is `http://localhost:8000` and can be changed in **Backend Endpoint Settings** or with `VITE_API_BASE_URL`. Backend validation and inference errors are shown in the app. If no backend can be reached, the app indicates its offline simulation mode.

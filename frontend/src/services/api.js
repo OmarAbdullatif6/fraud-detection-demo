@@ -51,21 +51,60 @@ export function calculateAge(dobStr, transDateStr) {
  * Check if the Python backend is live and responding
  */
 export async function checkBackendStatus() {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 1800);
+
   try {
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 1800);
     const response = await fetch(`${currentApiBaseUrl}/api/health`, {
       signal: controller.signal
     });
-    clearTimeout(timeoutId);
     if (response.ok) {
       const data = await response.json();
       return { online: true, details: data, url: currentApiBaseUrl };
     }
   } catch {
     // Backend offline / unreachable
+  } finally {
+    clearTimeout(timeoutId);
   }
   return { online: false, details: null, url: currentApiBaseUrl };
+}
+
+async function postJson(path, payload, timeoutMs) {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+
+  try {
+    const response = await fetch(`${currentApiBaseUrl}${path}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+      signal: controller.signal
+    });
+
+    if (!response.ok) {
+      let detail = `Request failed with status ${response.status}`;
+      try {
+        const errorBody = await response.json();
+        detail = errorBody.detail || detail;
+      } catch {
+        // Keep the HTTP status message when the server does not return JSON.
+      }
+
+      const error = new Error(detail);
+      error.status = response.status;
+      throw error;
+    }
+
+    return await response.json();
+  } catch (error) {
+    if (error.name === 'AbortError') {
+      throw new Error('The backend request timed out. Check that the model service is running and try again.');
+    }
+    throw error;
+  } finally {
+    clearTimeout(timeoutId);
+  }
 }
 
 /**
@@ -209,46 +248,67 @@ export function simulatePrediction(tx) {
 export async function predictTransaction(txData, forceMock = false) {
   if (!forceMock) {
     try {
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 2500);
-
-      const response = await fetch(`${currentApiBaseUrl}/api/predict`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(txData),
-        signal: controller.signal
-      });
-      clearTimeout(timeoutId);
-
-      if (response.ok) {
-        const result = await response.json();
-        return { ...result, mode: 'live_backend' };
+      const result = await postJson('/api/predict', txData, 15000);
+      return { ...result, mode: 'live_backend' };
+    } catch (error) {
+      if (error.status || error.name !== 'TypeError') {
+        throw error;
       }
-    } catch {
-      // Backend unavailable; seamlessly switch to local simulation
+      // Keep the documented offline demo mode when the backend cannot be reached.
     }
   }
 
-  // Fallback to simulation engine
   return simulatePrediction(txData);
 }
 
 /**
- * Batch prediction helper
+ * Submit a batch to the model service, or use the documented offline simulation.
  */
 export async function predictBatch(transactions, forceMock = false) {
-  const results = [];
-  let fraudCount = 0;
-  let flaggedAmount = 0;
+  if (!forceMock) {
+    try {
+      const modelInputs = transactions.map((transaction) => Object.fromEntries(
+        Object.entries(transaction).filter(([key]) => (
+          key !== 'id' && key !== 'ground_truth_is_fraud'
+        ))
+      ));
+      const response = await postJson(
+        '/api/batch-predict',
+        { transactions: modelInputs },
+        60000
+      );
+      if (!Array.isArray(response.results) || response.results.length !== transactions.length) {
+        throw new Error('The backend returned an incomplete batch prediction response.');
+      }
+      const items = transactions.map((transaction, index) => ({
+        ...transaction,
+        prediction: { ...response.results[index], mode: 'live_backend' }
+      }));
 
-  for (const tx of transactions) {
-    const res = await predictTransaction(tx, forceMock);
-    results.push({ ...tx, prediction: res });
-    if (res.is_fraud === 1) {
-      fraudCount++;
-      flaggedAmount += parseFloat(tx.amt) || 0;
+      return {
+        total: response.total_processed,
+        fraudCount: response.fraud_detected,
+        cleanCount: response.total_processed - response.fraud_detected,
+        fraudRate: response.fraud_rate_percent.toFixed(1),
+        flaggedAmount: response.total_amount_flagged.toFixed(2),
+        items
+      };
+    } catch (error) {
+      if (error.status || error.name !== 'TypeError') {
+        throw error;
+      }
+      // Keep the documented offline demo mode when the backend cannot be reached.
     }
   }
+
+  const results = transactions.map((transaction) => ({
+    ...transaction,
+    prediction: { ...simulatePrediction(transaction), mode: 'simulation' }
+  }));
+  const fraudCount = results.filter((item) => item.prediction.is_fraud === 1).length;
+  const flaggedAmount = results.reduce((total, item) => (
+    item.prediction.is_fraud === 1 ? total + (parseFloat(item.amt) || 0) : total
+  ), 0);
 
   return {
     total: transactions.length,

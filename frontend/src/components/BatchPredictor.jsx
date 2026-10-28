@@ -22,6 +22,7 @@ export default function BatchPredictor({ onBatchComplete }) {
   const [datasetRows, setDatasetRows] = useState([]);
   const [isRunning, setIsRunning] = useState(false);
   const [batchResults, setBatchResults] = useState(null);
+  const [errorMessage, setErrorMessage] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
   const [filterType, setFilterType] = useState('ALL'); // ALL, FRAUD, LEGIT
   const [selectedTxModal, setSelectedTxModal] = useState(null);
@@ -56,6 +57,7 @@ export default function BatchPredictor({ onBatchComplete }) {
 
     setDatasetRows(formatted);
     setBatchResults(null);
+    setErrorMessage('');
   };
 
   // Handle CSV file upload
@@ -109,6 +111,7 @@ export default function BatchPredictor({ onBatchComplete }) {
 
       setDatasetRows(parsed);
       setBatchResults(null);
+      setErrorMessage('');
     };
 
     reader.readAsText(file);
@@ -118,6 +121,7 @@ export default function BatchPredictor({ onBatchComplete }) {
   const handleRunBatch = async () => {
     if (datasetRows.length === 0) return;
     setIsRunning(true);
+    setErrorMessage('');
 
     try {
       const summary = await predictBatch(datasetRows);
@@ -126,7 +130,8 @@ export default function BatchPredictor({ onBatchComplete }) {
         onBatchComplete(summary);
       }
     } catch (err) {
-      console.error('Batch scoring error:', err);
+      setBatchResults(null);
+      setErrorMessage(err.message || 'Batch prediction failed. Check the backend service and try again.');
     } finally {
       setIsRunning(false);
     }
@@ -209,6 +214,13 @@ export default function BatchPredictor({ onBatchComplete }) {
           </button>
         </div>
       </div>
+
+      {errorMessage && (
+        <div className="ping-result-box fail" role="alert">
+          <AlertTriangle size={16} />
+          <span>{errorMessage}</span>
+        </div>
+      )}
 
       {/* KPI Metrics Dashboard (When results available) */}
       {batchResults && (

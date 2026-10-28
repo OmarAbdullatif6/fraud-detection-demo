@@ -16,37 +16,17 @@ import { MODEL_METADATA, FEATURE_REGISTRY } from '../data/constants';
 export default function ModelSpecs() {
   const [copiedCode, setCopiedCode] = useState(false);
 
-  const integrationCodeSnippet = `# Example Python Backend Model Serving (FastAPI + Scikit-Learn / XGBoost)
+  const integrationCodeSnippet = `# backend/main.py
 from fastapi import FastAPI
-import joblib
-import pandas as pd
-from schema import TransactionFeatures, PredictionResponse
+from predictor import FraudDetectionEnsemble
+from schema import TransactionFeatures
 
-app = FastAPI(title="Fraud Detection API")
-model = joblib.load("fraud_model.pkl")
+app = FastAPI(title="Fraud Detection AI API")
+ensemble = FraudDetectionEnsemble()
 
-@app.post("/api/predict", response_model=PredictionResponse)
+@app.post("/api/predict")
 def predict(tx: TransactionFeatures):
-    # 1. Feature Engineering (Haversine distance, age, hour)
-    features = preprocess_transaction(tx)
-    
-    # 2. Model Inference
-    prob = model.predict_proba([features])[0][1]
-    risk_score = round(prob * 100, 1)
-    
-    # 3. Decision Logic
-    decision = "BLOCK" if risk_score >= 75 else ("REVIEW" if risk_score >= 45 else "APPROVE")
-    
-    return {
-        "is_fraud": 1 if risk_score >= 65 else 0,
-        "fraud_probability": round(prob, 4),
-        "risk_score": risk_score,
-        "risk_level": "HIGH" if risk_score >= 75 else ("MEDIUM" if risk_score >= 45 else "LOW"),
-        "decision": decision,
-        "distance_km": features["distance_km"],
-        "explanation": generate_shap_attributions(model, features),
-        "latency_ms": 14.5
-    }`;
+    return ensemble.predict_one(tx.model_dump())`;
 
   const handleCopyCode = () => {
     navigator.clipboard.writeText(integrationCodeSnippet);
@@ -133,7 +113,7 @@ def predict(tx: TransactionFeatures):
           <div className="code-header-row">
             <div className="section-title-wrap">
               <FileCode size={18} className="text-accent-cyan" />
-              <h4>Backend Inference Integration Contract</h4>
+              <h4>Backend Model Inference</h4>
             </div>
             <button className="copy-btn btn-ghost" onClick={handleCopyCode}>
               {copiedCode ? <Check size={14} className="text-emerald" /> : <Copy size={14} />}
@@ -141,7 +121,7 @@ def predict(tx: TransactionFeatures):
             </button>
           </div>
           <p className="section-subtext">
-            When you're ready to add model weights (<code>.pkl</code> or <code>.onnx</code>), drop this into <code>/backend</code>:
+            The running FastAPI service loads the saved preprocessor, Isolation Forest, and autoencoder from <code>backend/Model</code>:
           </p>
 
           <pre className="code-block font-mono text-xs" style={{ maxHeight: '420px', overflowY: 'auto' }}>

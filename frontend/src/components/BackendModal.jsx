@@ -32,10 +32,15 @@ export default function BackendModal({ isOpen, onClose, backendStatus, onStatusC
     }
   };
 
-  const starterCode = `# In backend/ directory:
-pip install fastapi uvicorn pydantic scikit-learn
-python fastapi_app_stub.py
-# API will start at http://localhost:8000`;
+  const starterCode = `# Terminal 1: start the model-backed API
+cd backend
+python -m pip install -r requirements.txt
+python main.py
+
+# Terminal 2: start the frontend
+cd frontend
+npm install
+npm run dev`;
 
   const copyCode = () => {
     navigator.clipboard.writeText(starterCode);
@@ -136,7 +141,7 @@ python fastapi_app_stub.py
             </div>
             <pre className="code-block font-mono">{starterCode}</pre>
             <p className="instructions-note">
-              Files are already prepared in the <code>/backend</code> directory with <code>schema.py</code>, <code>fastapi_app_stub.py</code>, and documentation!
+            The frontend sends single and batch transactions to <code>/api/predict</code> and <code>/api/batch-predict</code>; both endpoints run the trained model in <code>backend/Model</code>.
             </p>
           </div>
         </div>

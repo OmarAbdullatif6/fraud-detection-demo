@@ -34,6 +34,7 @@ export default function SinglePredictor({ onPredictionComplete, backendStatus })
   const [activePresetId, setActivePresetId] = useState(PRESETS[0].id);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [prediction, setPrediction] = useState(null);
+  const [errorMessage, setErrorMessage] = useState('');
   const [distanceKm, setDistanceKm] = useState(0);
   const [cardholderAge, setCardholderAge] = useState(null);
 
@@ -56,6 +57,7 @@ export default function SinglePredictor({ onPredictionComplete, backendStatus })
     setFormData(preset.data);
     setActivePresetId(preset.id);
     setPrediction(null);
+    setErrorMessage('');
   };
 
   // Pick random row from real dataset samples
@@ -88,6 +90,7 @@ export default function SinglePredictor({ onPredictionComplete, backendStatus })
     setFormData(converted);
     setActivePresetId(null);
     setPrediction(null);
+    setErrorMessage('');
   };
 
   const handleInputChange = (field, value) => {
@@ -96,11 +99,13 @@ export default function SinglePredictor({ onPredictionComplete, backendStatus })
       [field]: value
     }));
     setActivePresetId(null);
+    setErrorMessage('');
   };
 
   const handleSubmit = async (e) => {
     if (e) e.preventDefault();
     setIsSubmitting(true);
+    setErrorMessage('');
 
     try {
       const result = await predictTransaction(formData);
@@ -113,7 +118,8 @@ export default function SinglePredictor({ onPredictionComplete, backendStatus })
         });
       }
     } catch (err) {
-      console.error('Prediction failed:', err);
+      setPrediction(null);
+      setErrorMessage(err.message || 'Prediction failed. Check the backend service and try again.');
     } finally {
       setIsSubmitting(false);
     }
@@ -447,6 +453,13 @@ export default function SinglePredictor({ onPredictionComplete, backendStatus })
             )}
           </div>
 
+          {errorMessage && (
+            <div className="ping-result-box fail" role="alert">
+              <AlertTriangle size={16} />
+              <span>{errorMessage}</span>
+            </div>
+          )}
+
           {!prediction ? (
             <div className="results-empty-state">
               <div className="empty-icon-shield">
@@ -571,6 +584,60 @@ export default function SinglePredictor({ onPredictionComplete, backendStatus })
                   )}
                 </div>
               </div>
+
+              {/* Model Diagnostics (Live Isolation Forest + Autoencoder Metrics) */}
+              {prediction.model_diagnostics && (
+                <div className="model-diagnostics-card" style={{
+                  marginTop: '1rem',
+                  background: 'rgba(10, 16, 30, 0.65)',
+                  border: '1px solid var(--border-medium)',
+                  borderRadius: 'var(--radius-md)',
+                  padding: '1rem'
+                }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                    <span style={{ fontSize: '0.78rem', fontWeight: 700, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                      Model Engine Diagnostics (backend/Model)
+                    </span>
+                    <span className="badge badge-cyan" style={{ fontSize: '0.68rem' }}>Ensemble Telemetry</span>
+                  </div>
+                  
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', fontSize: '0.8rem' }}>
+                    <div style={{ background: 'rgba(0,0,0,0.3)', padding: '8px', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border-subtle)' }}>
+                      <div style={{ color: 'var(--text-muted)', fontSize: '0.7rem' }}>Isolation Forest Score</div>
+                      <div className="font-mono" style={{ fontWeight: 700, marginTop: '2px' }}>
+                        {prediction.model_diagnostics.isolation_forest_score}
+                      </div>
+                      <div style={{ fontSize: '0.68rem', marginTop: '3px' }}>
+                        Threshold: &lt; {prediction.model_diagnostics.isolation_forest_threshold?.toFixed(4)}
+                        <span style={{ 
+                          marginLeft: '6px', 
+                          color: prediction.model_diagnostics.isolation_forest_anomaly ? 'var(--status-fraud)' : 'var(--status-safe)',
+                          fontWeight: 700
+                        }}>
+                          [{prediction.model_diagnostics.isolation_forest_anomaly ? 'ANOMALY' : 'NORMAL'}]
+                        </span>
+                      </div>
+                    </div>
+
+                    <div style={{ background: 'rgba(0,0,0,0.3)', padding: '8px', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border-subtle)' }}>
+                      <div style={{ color: 'var(--text-muted)', fontSize: '0.7rem' }}>Autoencoder Neural MSE</div>
+                      <div className="font-mono" style={{ fontWeight: 700, marginTop: '2px' }}>
+                        {prediction.model_diagnostics.autoencoder_recon_error}
+                      </div>
+                      <div style={{ fontSize: '0.68rem', marginTop: '3px' }}>
+                        Threshold: &gt; {prediction.model_diagnostics.autoencoder_threshold?.toFixed(5)}
+                        <span style={{ 
+                          marginLeft: '6px', 
+                          color: prediction.model_diagnostics.autoencoder_anomaly ? 'var(--status-fraud)' : 'var(--status-safe)',
+                          fontWeight: 700
+                        }}>
+                          [{prediction.model_diagnostics.autoencoder_anomaly ? 'ANOMALY' : 'NORMAL'}]
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
           )}
         </div>

@@ -1,0 +1,45 @@
+{
+    "isolation_forest_threshold": -0.10486140580344032,
+    "autoencoder_threshold": 0.025974610820412636,
+    "feature_columns": [
+        "category",
+        "gender",
+        "state",
+        "log_amt",
+        "distance_km",
+        "age",
+        "log_city_pop",
+        "lat",
+        "long",
+        "merch_lat",
+        "merch_long",
+        "hour",
+        "dayofweek",
+        "month",
+        "log_secs_since_prev",
+        "log_amt_vs_card_mean"
+    ],
+    "numerical_columns": [
+        "log_amt",
+        "distance_km",
+        "age",
+        "log_city_pop",
+        "lat",
+        "long",
+        "merch_lat",
+        "merch_long",
+        "hour",
+        "dayofweek",
+        "month",
+        "log_secs_since_prev",
+        "log_amt_vs_card_mean"
+    ],
+    "categorical_columns": [
+        "category",
+        "gender",
+        "state"
+    ],
+    "label_column": "is_fraud",
+    "fpr_target": 0.05,
+    "random_seed": 42
+}
