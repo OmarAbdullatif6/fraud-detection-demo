@@ -17,12 +17,14 @@ import {
 } from 'lucide-react';
 import { sampleDataset } from '../data/constants';
 import { predictBatch, calculateHaversineDistance } from '../services/api';
+import ModelSelector from './ModelSelector';
 
-export default function BatchPredictor({ onBatchComplete }) {
+export default function BatchPredictor({ onBatchComplete, availableModels }) {
   const [datasetRows, setDatasetRows] = useState([]);
   const [isRunning, setIsRunning] = useState(false);
   const [batchResults, setBatchResults] = useState(null);
   const [errorMessage, setErrorMessage] = useState('');
+  const [selectedModel, setSelectedModel] = useState('baseline');
   const [searchQuery, setSearchQuery] = useState('');
   const [filterType, setFilterType] = useState('ALL'); // ALL, FRAUD, LEGIT
   const [selectedTxModal, setSelectedTxModal] = useState(null);
@@ -124,7 +126,7 @@ export default function BatchPredictor({ onBatchComplete }) {
     setErrorMessage('');
 
     try {
-      const summary = await predictBatch(datasetRows);
+      const summary = await predictBatch(datasetRows, selectedModel);
       setBatchResults(summary);
       if (onBatchComplete) {
         onBatchComplete(summary);
@@ -169,6 +171,15 @@ export default function BatchPredictor({ onBatchComplete }) {
           <p className="batch-desc">
             Test model inference against multiple transactions from <code>fraudTest.csv</code> or upload a custom test batch.
           </p>
+          <ModelSelector
+            value={selectedModel}
+            onChange={(value) => {
+              setSelectedModel(value);
+              setBatchResults(null);
+              setErrorMessage('');
+            }}
+            availableModels={availableModels}
+          />
         </div>
 
         <div className="batch-actions-cluster">
@@ -228,7 +239,9 @@ export default function BatchPredictor({ onBatchComplete }) {
           <div className="glass-panel kpi-card">
             <span className="kpi-label">TOTAL PROCESSED</span>
             <span className="kpi-value font-mono">{batchResults.total}</span>
-            <span className="kpi-sub">Transactions Evaluated</span>
+            <span className="kpi-sub">
+              {batchResults.modelUsed === 'tabpfn' ? 'TabPFN 3.5' : batchResults.modelUsed === 'baseline' ? 'Baseline Ensemble' : 'Offline Simulation'}
+            </span>
           </div>
 
           <div className="glass-panel kpi-card kpi-fraud">

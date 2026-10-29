@@ -6,6 +6,12 @@ fraudTest.csv
 *.h5
 *.pt
 *.pth
+.env
+.env.*
+!.env.example
+backend/.env
+backend/.env.*
+!backend/.env.example
 
 # Python Environment
 __pycache__/

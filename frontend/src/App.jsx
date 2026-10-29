@@ -5,7 +5,7 @@ import BatchPredictor from './components/BatchPredictor';
 import ModelSpecs from './components/ModelSpecs';
 import AuditHistory from './components/AuditHistory';
 import BackendModal from './components/BackendModal';
-import { checkBackendStatus } from './services/api';
+import { checkBackendStatus, fetchModelAvailability } from './services/api';
 import './App.css';
 
 export default function App() {
@@ -17,13 +17,29 @@ export default function App() {
     url: 'http://localhost:8000'
   });
   const [auditHistory, setAuditHistory] = useState([]);
+  const [availableModels, setAvailableModels] = useState(null);
 
-  // Check backend health on initial load
   useEffect(() => {
     checkBackendStatus().then((res) => {
       setBackendStatus(res);
     });
+    fetchModelAvailability().then(setAvailableModels).catch((error) => {
+      setAvailableModels({
+        baseline: { id: 'baseline', available: true },
+        tabpfn: { id: 'tabpfn', available: false, reason: error.message }
+      });
+    });
   }, []);
+
+  const handleBackendStatusChange = (status) => {
+    setBackendStatus(status);
+    fetchModelAvailability().then(setAvailableModels).catch((error) => {
+      setAvailableModels({
+        baseline: { id: 'baseline', available: true },
+        tabpfn: { id: 'tabpfn', available: false, reason: error.message }
+      });
+    });
+  };
 
   const handlePredictionComplete = (newTx) => {
     setAuditHistory((prev) => [newTx, ...prev]);
@@ -56,12 +72,14 @@ export default function App() {
           <SinglePredictor
             onPredictionComplete={handlePredictionComplete}
             backendStatus={backendStatus}
+            availableModels={availableModels}
           />
         )}
 
         {activeTab === 'batch' && (
           <BatchPredictor
             onBatchComplete={handleBatchComplete}
+            availableModels={availableModels}
           />
         )}
 
@@ -82,7 +100,7 @@ export default function App() {
         isOpen={isSettingsOpen}
         onClose={() => setIsSettingsOpen(false)}
         backendStatus={backendStatus}
-        onStatusChange={(status) => setBackendStatus(status)}
+        onStatusChange={handleBackendStatusChange}
       />
 
       {/* Footer */}

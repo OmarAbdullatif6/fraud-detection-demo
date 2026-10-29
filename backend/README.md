@@ -14,6 +14,7 @@ backend/
 │   ├── isolation_forest.joblib # 100-tree Isolation Forest outlier detector
 │   └── autoencoder.keras       # 6-layer Deep Neural Autoencoder (79 -> 64 -> 32 -> 16 -> 32 -> 64 -> 79)
 ├── predictor.py                # Ensemble inference engine with Haversine spatial telemetry
+├── tabpfn_predictor.py          # Optional local TabPFN 3.5 classifier
 ├── main.py                     # FastAPI REST API serving endpoints for React frontend
 ├── schema.py                   # Pydantic data validation schemas
 ├── requirements.txt            # Runtime dependencies
@@ -117,7 +118,7 @@ Real-time single transaction scoring:
 ### 3. `POST /api/batch-predict`
 Takes an array of transactions in `{ "transactions": [...] }` and returns aggregated batch predictions.
 
-The React client sends each batch in one request. The service returns `total_processed`, `fraud_detected`, `fraud_rate_percent`, `total_amount_flagged`, and one model prediction per transaction in `results`. Invalid inputs return HTTP 422; inference failures are logged and return HTTP 500. The frontend displays these errors rather than presenting them as model predictions.
+The React client sends each batch in one request. The service returns `total_processed`, `fraud_detected`, `fraud_rate_percent`, `total_amount_flagged`, the selected `model_used`, and one model prediction per transaction in `results`. Invalid inputs return HTTP 422; inference failures are logged and return HTTP 500. The frontend displays these errors rather than presenting them as model predictions.
 
 ## Connecting the frontend
 
@@ -130,3 +131,13 @@ npm run dev
 ```
 
 The default API URL is `http://localhost:8000`; it can also be changed from **Backend Endpoint Settings** or set with `VITE_API_BASE_URL`. When the backend is unreachable, the frontend indicates that it is using its offline simulation.
+
+## Selecting Baseline or TabPFN
+
+The **Single Transaction** and **Batch & Dataset** screens provide a model selector. The default **Baseline Ensemble** continues to use the saved Isolation Forest and autoencoder. **TabPFN 3.5** is enabled when its checkpoint, the labeled context CSV, and the `tabpfn` package are available.
+
+TabPFN fits a classifier once on a deterministic sample of 5 fraud and 6,000 legitimate labeled rows from `fraudTest.csv` by default, then adjusts probabilities back to the dataset's observed fraud rate. The total context size can be changed up to 6,005 rows with `TABPFN_CONTEXT_ROWS`; the sample uses up to 5 fraud rows and fills the remainder with legitimate rows. Larger samples can be substantially slower on CPU. The first TabPFN prediction loads the checkpoint and fits the context, so it takes longer than subsequent predictions. By default, device selection uses CUDA only when PyTorch has CUDA support and the GPU has at least 8 GB of memory; otherwise it runs on CPU. The device, context path, and model checkpoint path can be adjusted in `backend/.env`.
+
+Copy `backend/.env.example` to `backend/.env` to configure the local checkpoint. If authentication is required to retrieve a checkpoint, use the official `TABPFN_TOKEN` variable in this ignored file; never put the token in frontend code or commit it. The provided local checkpoint avoids sending transaction records to an external API.
+
+> **Model license:** TabPFN 3.5 weights are provided under a separate non-commercial license. A website/product integration or use in commercial decisions requires a commercial license or API agreement. Review the [official model license guidance](https://docs.priorlabs.ai/models#tabpfn-model-license) before deployment.

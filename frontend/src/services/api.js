@@ -70,6 +70,16 @@ export async function checkBackendStatus() {
   return { online: false, details: null, url: currentApiBaseUrl };
 }
 
+export async function fetchModelAvailability() {
+  const response = await fetch(`${currentApiBaseUrl}/api/models`);
+  if (!response.ok) {
+    throw new Error(`Could not load available models (HTTP ${response.status}).`);
+  }
+
+  const data = await response.json();
+  return Object.fromEntries(data.models.map((model) => [model.id, model]));
+}
+
 async function postJson(path, payload, timeoutMs) {
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
@@ -237,7 +247,8 @@ export function simulatePrediction(tx) {
     cardholder_age: age,
     explanation: factors,
     latency_ms: Math.floor(12 + Math.random() * 15),
-    mode: 'simulation'
+    mode: 'simulation',
+    model_used: 'simulation'
   };
 }
 
@@ -245,10 +256,14 @@ export function simulatePrediction(tx) {
  * Predict a single transaction
  * Tries live backend first, falls back gracefully to simulation
  */
-export async function predictTransaction(txData, forceMock = false) {
+export async function predictTransaction(txData, selectedModel = 'baseline', forceMock = false) {
   if (!forceMock) {
     try {
-      const result = await postJson('/api/predict', txData, 15000);
+      const result = await postJson(
+        '/api/predict',
+        { ...txData, model: selectedModel },
+        selectedModel === 'tabpfn' ? 180000 : 15000
+      );
       return { ...result, mode: 'live_backend' };
     } catch (error) {
       if (error.status || error.name !== 'TypeError') {
@@ -264,7 +279,7 @@ export async function predictTransaction(txData, forceMock = false) {
 /**
  * Submit a batch to the model service, or use the documented offline simulation.
  */
-export async function predictBatch(transactions, forceMock = false) {
+export async function predictBatch(transactions, selectedModel = 'baseline', forceMock = false) {
   if (!forceMock) {
     try {
       const modelInputs = transactions.map((transaction) => Object.fromEntries(
@@ -274,8 +289,8 @@ export async function predictBatch(transactions, forceMock = false) {
       ));
       const response = await postJson(
         '/api/batch-predict',
-        { transactions: modelInputs },
-        60000
+        { model: selectedModel, transactions: modelInputs },
+        180000
       );
       if (!Array.isArray(response.results) || response.results.length !== transactions.length) {
         throw new Error('The backend returned an incomplete batch prediction response.');
@@ -291,6 +306,7 @@ export async function predictBatch(transactions, forceMock = false) {
         cleanCount: response.total_processed - response.fraud_detected,
         fraudRate: response.fraud_rate_percent.toFixed(1),
         flaggedAmount: response.total_amount_flagged.toFixed(2),
+        modelUsed: response.model_used,
         items
       };
     } catch (error) {
@@ -316,6 +332,7 @@ export async function predictBatch(transactions, forceMock = false) {
     cleanCount: transactions.length - fraudCount,
     fraudRate: transactions.length ? ((fraudCount / transactions.length) * 100).toFixed(1) : 0,
     flaggedAmount: flaggedAmount.toFixed(2),
+    modelUsed: 'simulation',
     items: results
   };
 }

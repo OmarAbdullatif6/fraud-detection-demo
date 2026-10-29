@@ -22,19 +22,21 @@ import {
   PRESETS, 
   sampleDataset 
 } from '../data/constants';
+import ModelSelector from './ModelSelector';
 import { 
   calculateHaversineDistance, 
   calculateAge, 
   predictTransaction 
 } from '../services/api';
 
-export default function SinglePredictor({ onPredictionComplete, backendStatus }) {
+export default function SinglePredictor({ onPredictionComplete, availableModels }) {
   // Initial transaction state initialized from first preset
   const [formData, setFormData] = useState(PRESETS[0].data);
   const [activePresetId, setActivePresetId] = useState(PRESETS[0].id);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [prediction, setPrediction] = useState(null);
   const [errorMessage, setErrorMessage] = useState('');
+  const [selectedModel, setSelectedModel] = useState('baseline');
   const [distanceKm, setDistanceKm] = useState(0);
   const [cardholderAge, setCardholderAge] = useState(null);
 
@@ -108,7 +110,7 @@ export default function SinglePredictor({ onPredictionComplete, backendStatus })
     setErrorMessage('');
 
     try {
-      const result = await predictTransaction(formData);
+      const result = await predictTransaction(formData, selectedModel);
       setPrediction(result);
       if (onPredictionComplete) {
         onPredictionComplete({
@@ -175,7 +177,19 @@ export default function SinglePredictor({ onPredictionComplete, backendStatus })
               <CreditCard size={18} className="text-accent-cyan" />
               <h4>Transaction Details</h4>
             </div>
-            <span className="badge badge-cyan font-mono">16 Features</span>
+            <div className="single-model-controls">
+              <span className="badge badge-cyan font-mono">16 Features</span>
+              <ModelSelector
+                value={selectedModel}
+                onChange={(value) => {
+                  setSelectedModel(value);
+                  setPrediction(null);
+                  setErrorMessage('');
+                }}
+                availableModels={availableModels}
+                compact
+              />
+            </div>
           </div>
 
           <div className="form-grid-2">
@@ -556,6 +570,16 @@ export default function SinglePredictor({ onPredictionComplete, backendStatus })
                       {prediction.mode === 'live_backend' ? 'Python API' : 'Simulation Engine'}
                     </span>
                   </div>
+                  <div className="metric-item">
+                    <span className="metric-label">Prediction Model</span>
+                    <span className="metric-value font-mono">
+                      {prediction.model_used === 'tabpfn'
+                        ? 'TabPFN 3.5'
+                        : prediction.model_used === 'baseline'
+                        ? 'Baseline Ensemble'
+                        : 'Offline Simulation'}
+                    </span>
+                  </div>
                 </div>
               </div>
 
@@ -596,46 +620,79 @@ export default function SinglePredictor({ onPredictionComplete, backendStatus })
                 }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
                     <span style={{ fontSize: '0.78rem', fontWeight: 700, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-                      Model Engine Diagnostics (backend/Model)
+                      {prediction.model_used === 'tabpfn' ? 'TabPFN Model Diagnostics' : 'Baseline Ensemble Diagnostics'}
                     </span>
-                    <span className="badge badge-cyan" style={{ fontSize: '0.68rem' }}>Ensemble Telemetry</span>
+                    <span className="badge badge-cyan" style={{ fontSize: '0.68rem' }}>
+                      {prediction.model_used === 'tabpfn'
+                        ? `Local ${prediction.model_diagnostics.device || 'inference'}`
+                        : 'Ensemble Telemetry'}
+                    </span>
                   </div>
-                  
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', fontSize: '0.8rem' }}>
-                    <div style={{ background: 'rgba(0,0,0,0.3)', padding: '8px', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border-subtle)' }}>
-                      <div style={{ color: 'var(--text-muted)', fontSize: '0.7rem' }}>Isolation Forest Score</div>
-                      <div className="font-mono" style={{ fontWeight: 700, marginTop: '2px' }}>
-                        {prediction.model_diagnostics.isolation_forest_score}
-                      </div>
-                      <div style={{ fontSize: '0.68rem', marginTop: '3px' }}>
-                        Threshold: &lt; {prediction.model_diagnostics.isolation_forest_threshold?.toFixed(4)}
-                        <span style={{ 
-                          marginLeft: '6px', 
-                          color: prediction.model_diagnostics.isolation_forest_anomaly ? 'var(--status-fraud)' : 'var(--status-safe)',
-                          fontWeight: 700
-                        }}>
-                          [{prediction.model_diagnostics.isolation_forest_anomaly ? 'ANOMALY' : 'NORMAL'}]
-                        </span>
-                      </div>
-                    </div>
 
-                    <div style={{ background: 'rgba(0,0,0,0.3)', padding: '8px', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border-subtle)' }}>
-                      <div style={{ color: 'var(--text-muted)', fontSize: '0.7rem' }}>Autoencoder Neural MSE</div>
-                      <div className="font-mono" style={{ fontWeight: 700, marginTop: '2px' }}>
-                        {prediction.model_diagnostics.autoencoder_recon_error}
+                  {prediction.model_used === 'tabpfn' ? (
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', fontSize: '0.8rem' }}>
+                      <div>
+                        <div style={{ color: 'var(--text-muted)', fontSize: '0.7rem' }}>Context Rows</div>
+                        <div className="font-mono" style={{ fontWeight: 700, marginTop: '2px' }}>
+                          {prediction.model_diagnostics.context_rows}
+                        </div>
                       </div>
-                      <div style={{ fontSize: '0.68rem', marginTop: '3px' }}>
-                        Threshold: &gt; {prediction.model_diagnostics.autoencoder_threshold?.toFixed(5)}
-                        <span style={{ 
-                          marginLeft: '6px', 
-                          color: prediction.model_diagnostics.autoencoder_anomaly ? 'var(--status-fraud)' : 'var(--status-safe)',
-                          fontWeight: 700
-                        }}>
-                          [{prediction.model_diagnostics.autoencoder_anomaly ? 'ANOMALY' : 'NORMAL'}]
-                        </span>
+                      <div>
+                        <div style={{ color: 'var(--text-muted)', fontSize: '0.7rem' }}>Fraud Context Rows</div>
+                        <div className="font-mono" style={{ fontWeight: 700, marginTop: '2px' }}>
+                          {prediction.model_diagnostics.fraud_context_rows}
+                        </div>
+                      </div>
+                      <div>
+                        <div style={{ color: 'var(--text-muted)', fontSize: '0.7rem' }}>Context Fraud Rate</div>
+                        <div className="font-mono" style={{ fontWeight: 700, marginTop: '2px' }}>
+                          {(prediction.model_diagnostics.context_fraud_prior * 100).toFixed(2)}%
+                        </div>
+                      </div>
+                      <div>
+                        <div style={{ color: 'var(--text-muted)', fontSize: '0.7rem' }}>Source Fraud Rate</div>
+                        <div className="font-mono" style={{ fontWeight: 700, marginTop: '2px' }}>
+                          {(prediction.model_diagnostics.training_fraud_prior * 100).toFixed(2)}%
+                        </div>
                       </div>
                     </div>
-                  </div>
+                  ) : (
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', fontSize: '0.8rem' }}>
+                      <div style={{ background: 'rgba(0,0,0,0.3)', padding: '8px', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border-subtle)' }}>
+                        <div style={{ color: 'var(--text-muted)', fontSize: '0.7rem' }}>Isolation Forest Score</div>
+                        <div className="font-mono" style={{ fontWeight: 700, marginTop: '2px' }}>
+                          {prediction.model_diagnostics.isolation_forest_score}
+                        </div>
+                        <div style={{ fontSize: '0.68rem', marginTop: '3px' }}>
+                          Threshold: &lt; {prediction.model_diagnostics.isolation_forest_threshold?.toFixed(4)}
+                          <span style={{
+                            marginLeft: '6px',
+                            color: prediction.model_diagnostics.isolation_forest_anomaly ? 'var(--status-fraud)' : 'var(--status-safe)',
+                            fontWeight: 700
+                          }}>
+                            [{prediction.model_diagnostics.isolation_forest_anomaly ? 'ANOMALY' : 'NORMAL'}]
+                          </span>
+                        </div>
+                      </div>
+
+                      <div style={{ background: 'rgba(0,0,0,0.3)', padding: '8px', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border-subtle)' }}>
+                        <div style={{ color: 'var(--text-muted)', fontSize: '0.7rem' }}>Autoencoder Neural MSE</div>
+                        <div className="font-mono" style={{ fontWeight: 700, marginTop: '2px' }}>
+                          {prediction.model_diagnostics.autoencoder_recon_error}
+                        </div>
+                        <div style={{ fontSize: '0.68rem', marginTop: '3px' }}>
+                          Threshold: &gt; {prediction.model_diagnostics.autoencoder_threshold?.toFixed(5)}
+                          <span style={{
+                            marginLeft: '6px',
+                            color: prediction.model_diagnostics.autoencoder_anomaly ? 'var(--status-fraud)' : 'var(--status-safe)',
+                            fontWeight: 700
+                          }}>
+                            [{prediction.model_diagnostics.autoencoder_anomaly ? 'ANOMALY' : 'NORMAL'}]
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  )}
                 </div>
               )}
             </div>

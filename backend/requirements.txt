@@ -3,5 +3,7 @@ h5py
 joblib
 numpy
 pandas
+python-dotenv
 scikit-learn==1.6.1
+tabpfn==9.2.0
 uvicorn[standard]

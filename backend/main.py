@@ -1,21 +1,26 @@
 import os
 import sys
 import logging
-from datetime import datetime
-from typing import List, Optional
+from datetime import datetime, timezone
+from typing import List, Literal, Optional
+
+from dotenv import load_dotenv
 
 # Ensure current directory is in sys.path
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 if BASE_DIR not in sys.path:
     sys.path.insert(0, BASE_DIR)
+load_dotenv(os.path.join(BASE_DIR, ".env"))
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
 from predictor import FraudDetectionEnsemble
+from tabpfn_predictor import TabPFNPredictor, TabPFNUnavailableError
 
 logger = logging.getLogger(__name__)
+ModelName = Literal["baseline", "tabpfn"]
 
 app = FastAPI(
     title="Fraud Detection AI API",
@@ -35,8 +40,10 @@ app.add_middleware(
 print("Loading Fraud Detection Ensemble (Isolation Forest + Autoencoder)...")
 ensemble = FraudDetectionEnsemble()
 print("Ensemble successfully loaded and ready for inference!")
+tabpfn_predictor = TabPFNPredictor(ensemble)
 
 class TransactionInput(BaseModel):
+    model: ModelName = Field("baseline", description="Prediction model to use")
     trans_date_trans_time: Optional[str] = Field(None, description="Transaction timestamp YYYY-MM-DD HH:MM:SS")
     cc_num: Optional[str] = Field(None, description="Credit card number")
     merchant: Optional[str] = Field("Unknown Merchant", description="Merchant name")
@@ -77,9 +84,11 @@ class PredictionResult(BaseModel):
     explanation: List[RiskFactor]
     latency_ms: float
     model_diagnostics: Optional[dict] = None
+    model_used: str = "baseline"
 
 class BatchRequest(BaseModel):
-    transactions: List[TransactionInput]
+    model: ModelName = "baseline"
+    transactions: List[TransactionInput] = Field(..., min_length=1)
 
 class BatchResponse(BaseModel):
     total_processed: int
@@ -87,6 +96,7 @@ class BatchResponse(BaseModel):
     fraud_rate_percent: float
     total_amount_flagged: float
     results: List[PredictionResult]
+    model_used: str
 
 @app.get("/")
 def root():
@@ -107,7 +117,7 @@ def health_check():
         "isolation_forest_threshold": ensemble.iso_threshold,
         "autoencoder_threshold": ensemble.ae_threshold,
         "feature_count": len(ensemble.feature_columns),
-        "timestamp": datetime.utcnow().isoformat()
+        "timestamp": datetime.now(timezone.utc).isoformat()
     }
 
 @app.get("/api/model-info")
@@ -129,12 +139,31 @@ def model_info():
         }
     }
 
+@app.get("/api/models")
+def available_models():
+    return {
+        "models": [
+            {"id": "baseline", "name": "Baseline Ensemble", "available": True},
+            {
+                "id": "tabpfn",
+                "name": "TabPFN 3.5",
+                **tabpfn_predictor.availability(),
+            },
+        ]
+    }
+
 @app.post("/api/predict", response_model=PredictionResult)
 def predict_transaction(tx: TransactionInput):
     try:
-        data = tx.model_dump(exclude_none=True)
-        result = ensemble.predict_one(data)
+        data = tx.model_dump(exclude_none=True, exclude={"model"})
+        if tx.model == "tabpfn":
+            result = tabpfn_predictor.predict_one(data)
+        else:
+            result = ensemble.predict_one(data)
+        result["model_used"] = tx.model
         return result
+    except TabPFNUnavailableError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
     except Exception as exc:
         logger.exception("Single transaction inference failed")
         raise HTTPException(status_code=500, detail="Model inference failed") from exc
@@ -142,14 +171,17 @@ def predict_transaction(tx: TransactionInput):
 @app.post("/api/batch-predict", response_model=BatchResponse)
 def batch_predict(request: BatchRequest):
     try:
-        results = []
+        transactions = [tx.model_dump(exclude_none=True, exclude={"model"}) for tx in request.transactions]
+        if request.model == "tabpfn":
+            results = tabpfn_predictor.predict_batch(transactions)
+        else:
+            results = [ensemble.predict_one(data) for data in transactions]
+
         fraud_count = 0
         total_flagged_amount = 0.0
-        
-        for tx in request.transactions:
-            data = tx.model_dump(exclude_none=True)
-            res = ensemble.predict_one(data)
-            results.append(res)
+
+        for data, res in zip(transactions, results):
+            res["model_used"] = request.model
             if res["is_fraud"] == 1:
                 fraud_count += 1
                 total_flagged_amount += float(data.get("amt", 0.0))
@@ -162,8 +194,11 @@ def batch_predict(request: BatchRequest):
             "fraud_detected": fraud_count,
             "fraud_rate_percent": fraud_rate,
             "total_amount_flagged": round(total_flagged_amount, 2),
-            "results": results
+            "results": results,
+            "model_used": request.model
         }
+    except TabPFNUnavailableError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
     except Exception as exc:
         logger.exception("Batch transaction inference failed")
         raise HTTPException(status_code=500, detail="Batch model inference failed") from exc

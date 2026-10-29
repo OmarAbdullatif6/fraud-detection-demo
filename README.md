@@ -32,6 +32,7 @@ fraud-detection-demo/
 │   ├── Model/                    # Preprocessor, Isolation Forest & autoencoder artifacts
 │   ├── main.py                   # Health, single-prediction & batch-prediction endpoints
 │   ├── predictor.py              # Feature engineering and ensemble inference
+│   ├── tabpfn_predictor.py       # Optional local TabPFN classifier
 │   ├── requirements.txt          # Backend Python dependencies
 │   └── README.md                 # API documentation and setup guide
 │
@@ -64,6 +65,6 @@ python -m pip install -r requirements.txt
 python main.py
 ```
 
-The API starts at `http://localhost:8000`. Open `http://localhost:8000/docs` to inspect the endpoints. With the frontend running at `http://localhost:5173`, single transactions are sent to `POST /api/predict` and batch uploads to `POST /api/batch-predict`. The service validates the request, prepares the model features, runs the Isolation Forest and autoencoder, and returns prediction scores and explanations to the UI.
+The API starts at `http://localhost:8000`. Open `http://localhost:8000/docs` to inspect the endpoints. With the frontend running at `http://localhost:5173`, users can choose the Baseline Ensemble or TabPFN 3.5 before prediction. The TabPFN option uses the local checkpoint and labeled rows from `fraudTest.csv`; transaction records are not sent to an external model service.
 
-The trained model artifacts are expected in `backend/Model/`. The frontend endpoint can be changed from **Backend Endpoint Settings**.
+The model files and `fraudTest.csv` are large local assets and are ignored by Git; place them in `backend/Model/` and the repository root respectively. To configure TabPFN, copy `backend/.env.example` to `backend/.env`. TabPFN 3.5 model weights require accepting Prior Labs' model license; the current model license is non-commercial and does not permit integrating local weights into a product without a separate commercial license or API agreement. The frontend endpoint can be changed from **Backend Endpoint Settings**.
