@@ -6,6 +6,7 @@ fraudTest.csv
 *.h5
 *.pt
 *.pth
+*.safetensors
 .env
 .env.*
 !.env.example
