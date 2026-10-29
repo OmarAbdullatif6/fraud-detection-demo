@@ -102,12 +102,15 @@ class FraudDetectionEnsemble:
             dt = pd.Timestamp.now()
             
         # Parse age from DOB
-        dob_str = str(tx.get("dob", ""))
+        dob_str = str(tx.get("dob", "")).strip()
         try:
-            dob_dt = pd.to_datetime(dob_str)
-            age = (dt - dob_dt).days // 365
-            if age < 0 or age > 120:
+            if not dob_str or dob_str == "nan":
                 age = 45
+            else:
+                dob_dt = pd.to_datetime(dob_str)
+                age = (dt - dob_dt).days // 365
+                if math.isnan(age) or age < 0 or age > 120:
+                    age = 45
         except Exception:
             age = 45
             

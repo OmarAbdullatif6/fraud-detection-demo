@@ -1,4 +1,5 @@
 import importlib.util
+import json
 import logging
 import os
 import threading
@@ -13,6 +14,7 @@ BACKEND_DIR = Path(__file__).resolve().parent
 ROOT_DIR = BACKEND_DIR.parent
 DEFAULT_MODEL_PATH = BACKEND_DIR / "Model" / "tabpfn-v3.5-20260909.safetensors"
 DEFAULT_CONTEXT_PATH = ROOT_DIR / "fraudTest.csv"
+DEFAULT_FALLBACK_SAMPLE_PATH = ROOT_DIR / "frontend" / "src" / "data" / "sample_dataset.json"
 CONTEXT_COLUMNS = [
     "trans_date_trans_time",
     "category",
@@ -27,8 +29,10 @@ CONTEXT_COLUMNS = [
     "merch_long",
     "is_fraud",
 ]
-MAX_CONTEXT_ROWS = 6005
-MAX_FRAUD_CONTEXT_ROWS = 5
+MAX_CONTEXT_ROWS = 10000
+DEFAULT_FRAUD_ROWS = 10
+DEFAULT_LEGITIMATE_ROWS = 5000
+DEFAULT_CONTEXT_ROWS = 5010
 logger = logging.getLogger(__name__)
 
 
@@ -57,13 +61,30 @@ class TabPFNPredictor:
         return path if path.is_absolute() else BACKEND_DIR / path
 
     def availability(self):
+        token = os.getenv("TABPFN_TOKEN", "").strip()
+        has_client = importlib.util.find_spec("tabpfn_client") is not None
+        has_local_tabpfn = importlib.util.find_spec("tabpfn") is not None
+        has_local_model = self.model_path.is_file()
+        has_context = self.context_path.is_file() or DEFAULT_FALLBACK_SAMPLE_PATH.is_file()
+
         reasons = []
-        if importlib.util.find_spec("tabpfn") is None:
-            reasons.append("Install backend requirements to enable TabPFN.")
-        if not self.model_path.is_file():
-            reasons.append(f"TabPFN checkpoint not found: {self.model_path}")
-        if not self.context_path.is_file():
-            reasons.append(f"Labeled context CSV not found: {self.context_path}")
+
+        # Cloud API Mode (Preferred when token is set)
+        if token:
+            if not has_client and not has_local_tabpfn:
+                reasons.append("Install tabpfn-client (pip install tabpfn-client) to enable TabPFN Cloud API.")
+            if not has_context:
+                reasons.append(f"Labeled context CSV not found: {self.context_path}")
+        # Local Mode (Fallback when local model checkpoint exists)
+        elif has_local_model and has_local_tabpfn:
+            if not has_context:
+                reasons.append(f"Labeled context CSV not found: {self.context_path}")
+        # Not configured
+        else:
+            reasons.append(
+                "TabPFN API key not configured. Set TABPFN_TOKEN in backend/.env "
+                "(get a free key at https://platform.priorlabs.ai) or place local model weights in Model/."
+            )
 
         result = {"available": not reasons}
         if reasons:
@@ -99,7 +120,18 @@ class TabPFNPredictor:
 
     def _load_context(self):
         try:
-            context_limit = int(os.getenv("TABPFN_CONTEXT_ROWS", "6005"))
+            fraud_target = int(os.getenv("TABPFN_FRAUD_ROWS", str(DEFAULT_FRAUD_ROWS)))
+        except ValueError:
+            fraud_target = DEFAULT_FRAUD_ROWS
+
+        try:
+            legitimate_target = int(os.getenv("TABPFN_LEGITIMATE_ROWS", str(DEFAULT_LEGITIMATE_ROWS)))
+        except ValueError:
+            legitimate_target = DEFAULT_LEGITIMATE_ROWS
+
+        default_limit = fraud_target + legitimate_target
+        try:
+            context_limit = int(os.getenv("TABPFN_CONTEXT_ROWS", str(default_limit)))
         except ValueError as exc:
             raise TabPFNUnavailableError("TABPFN_CONTEXT_ROWS must be an integer.") from exc
 
@@ -108,12 +140,27 @@ class TabPFNPredictor:
                 f"TABPFN_CONTEXT_ROWS must be between 2 and {MAX_CONTEXT_ROWS}."
             )
 
-        try:
-            data = pd.read_csv(self.context_path, usecols=CONTEXT_COLUMNS)
-        except (OSError, ValueError, pd.errors.ParserError) as exc:
+        if self.context_path.is_file():
+            try:
+                data = pd.read_csv(self.context_path, usecols=CONTEXT_COLUMNS)
+            except (OSError, ValueError, pd.errors.ParserError) as exc:
+                raise TabPFNUnavailableError(
+                    f"Could not load TabPFN context data from {self.context_path}."
+                ) from exc
+        elif DEFAULT_FALLBACK_SAMPLE_PATH.is_file():
+            try:
+                with open(DEFAULT_FALLBACK_SAMPLE_PATH, "r", encoding="utf-8") as f:
+                    raw_data = json.load(f)
+                data = pd.DataFrame(raw_data)
+                data = data[[col for col in CONTEXT_COLUMNS if col in data.columns]]
+            except Exception as exc:
+                raise TabPFNUnavailableError(
+                    f"Could not load fallback TabPFN context data from {DEFAULT_FALLBACK_SAMPLE_PATH}."
+                ) from exc
+        else:
             raise TabPFNUnavailableError(
-                f"Could not load TabPFN context data from {self.context_path}."
-            ) from exc
+                f"TabPFN context data not found at {self.context_path} or fallback sample."
+            )
 
         labels = pd.to_numeric(data.pop("is_fraud"), errors="raise").astype(int)
         if labels.nunique() != 2:
@@ -121,27 +168,24 @@ class TabPFNPredictor:
                 "TabPFN context data must contain both legitimate and fraud labels."
             )
         self._training_fraud_prior = float(labels.mean())
-        if len(data) > context_limit:
-            fraud_rows = data.loc[labels == 1]
-            legitimate_rows = data.loc[labels == 0]
-            fraud_count = min(MAX_FRAUD_CONTEXT_ROWS, context_limit - 1)
-            legitimate_count = context_limit - fraud_count
-            if len(fraud_rows) < fraud_count or len(legitimate_rows) < legitimate_count:
-                raise TabPFNUnavailableError(
-                    "TabPFN context data does not contain enough fraud and legitimate "
-                    f"rows to sample {fraud_count} fraud and {legitimate_count} legitimate transactions."
-                )
-            sampled = pd.concat([
-                fraud_rows.sample(n=fraud_count, random_state=42),
-                legitimate_rows.sample(n=legitimate_count, random_state=42),
-            ])
-            data = sampled.sample(frac=1, random_state=42)
-            labels = labels.loc[data.index]
-        elif len(data) < context_limit:
+        fraud_rows = data.loc[labels == 1]
+        legitimate_rows = data.loc[labels == 0]
+
+        fraud_count = min(fraud_target, len(fraud_rows))
+        max_legitimate_allowed = max(context_limit - fraud_count, 1)
+        legitimate_count = min(legitimate_target, len(legitimate_rows), max_legitimate_allowed)
+
+        if fraud_count < 1 or legitimate_count < 1:
             raise TabPFNUnavailableError(
-                f"TabPFN context data contains {len(data)} rows; "
-                f"{context_limit} are required."
+                "TabPFN context data does not contain enough fraud and legitimate rows."
             )
+
+        sampled = pd.concat([
+            fraud_rows.sample(n=fraud_count, random_state=42),
+            legitimate_rows.sample(n=legitimate_count, random_state=42),
+        ])
+        data = sampled.sample(frac=1, random_state=42)
+        labels = labels.loc[data.index]
 
         self._context_fraud_prior = float(labels.mean())
         feature_rows = [
@@ -165,26 +209,41 @@ class TabPFNPredictor:
             if not availability["available"]:
                 raise TabPFNUnavailableError(availability["reason"])
 
-            try:
-                from tabpfn import TabPFNClassifier
+            token = os.getenv("TABPFN_TOKEN", "").strip()
+            features, labels = self._load_context()
 
-                features, labels = self._load_context()
-                device = self._select_device()
-                classifier = TabPFNClassifier(
-                    model_path=str(self.model_path),
-                    device=device,
-                    n_estimators=1,
-                    n_preprocessing_jobs=1,
-                    random_state=42,
-                )
-                classifier.fit(features, labels)
+            try:
+                if token:
+                    # Cloud API Mode (Prior Labs)
+                    import tabpfn_client
+                    from tabpfn_client import TabPFNClassifier
+                    tabpfn_client.set_access_token(token)
+                    try:
+                        tabpfn_client.init()
+                    except Exception:
+                        pass
+                    classifier = TabPFNClassifier(random_state=42)
+                    classifier.fit(features, labels)
+                    device = "cloud-api"
+                else:
+                    # Local Checkpoint Mode
+                    from tabpfn import TabPFNClassifier
+                    device = self._select_device()
+                    classifier = TabPFNClassifier(
+                        model_path=str(self.model_path),
+                        device=device,
+                        n_estimators=1,
+                        n_preprocessing_jobs=1,
+                        random_state=42,
+                    )
+                    classifier.fit(features, labels)
             except TabPFNUnavailableError:
                 raise
             except Exception as exc:
-                logger.exception("Could not initialize TabPFN from its checkpoint and context")
+                logger.exception("Could not initialize TabPFN")
                 raise TabPFNUnavailableError(
-                    "TabPFN could not load its checkpoint or labeled context. "
-                    "Check the TabPFN version, model license, and model files."
+                    f"TabPFN could not be initialized: {exc}. "
+                    "Check your TABPFN_TOKEN or local model checkpoint."
                 ) from exc
 
             self._classifier = classifier
@@ -214,8 +273,8 @@ class TabPFNPredictor:
         with self._predict_lock:
             raw_probabilities = classifier.predict_proba(model_input)[:, fraud_class_index]
         latency_ms = round((time.perf_counter() - start_time) * 1000, 2)
-        context_odds = self._context_fraud_prior / (1 - self._context_fraud_prior)
-        training_odds = self._training_fraud_prior / (1 - self._training_fraud_prior)
+        context_odds = max(self._context_fraud_prior, 1e-6) / max(1 - self._context_fraud_prior, 1e-6)
+        training_odds = max(self._training_fraud_prior, 1e-6) / max(1 - self._training_fraud_prior, 1e-6)
         prior_correction = training_odds / context_odds
         probabilities = (raw_probabilities * prior_correction) / (
             (raw_probabilities * prior_correction) + (1 - raw_probabilities)
@@ -249,7 +308,7 @@ class TabPFNPredictor:
                 }],
                 "latency_ms": latency_ms,
                 "model_diagnostics": {
-                    "model": "TabPFN 3.5",
+                    "model": "TabPFN 3.5 (Cloud API)" if self._device == "cloud-api" else "TabPFN 3.5",
                     "context_rows": self._context_rows,
                     "fraud_context_rows": self._fraud_context_rows,
                     "context_fraud_prior": round(self._context_fraud_prior, 6),

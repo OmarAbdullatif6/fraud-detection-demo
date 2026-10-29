@@ -5,5 +5,5 @@ numpy
 pandas
 python-dotenv
 scikit-learn==1.6.1
-tabpfn==9.2.0
+tabpfn-client>=0.7.0
 uvicorn[standard]

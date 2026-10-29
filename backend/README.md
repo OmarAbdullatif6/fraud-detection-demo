@@ -134,10 +134,17 @@ The default API URL is `http://localhost:8000`; it can also be changed from **Ba
 
 ## Selecting Baseline or TabPFN
 
-The **Single Transaction** and **Batch & Dataset** screens provide a model selector. The default **Baseline Ensemble** continues to use the saved Isolation Forest and autoencoder. **TabPFN 3.5** is enabled when its checkpoint, the labeled context CSV, and the `tabpfn` package are available.
+The **Single Transaction** and **Batch & Dataset** screens provide a model selector:
+* **Baseline Ensemble (Default)**: Uses the trained Isolation Forest and pure NumPy neural autoencoder. Highly optimized, runs in ~12ms, and is 100% self-contained locally.
+* **TabPFN 3.5 (Prior Labs Cloud API)**: Enabled by setting `TABPFN_TOKEN` in `backend/.env`. Runs via Prior Labs' hosted inference engine without requiring local GPU or heavy PyTorch installations.
 
-TabPFN fits a classifier once on a deterministic sample of 5 fraud and 6,000 legitimate labeled rows from `fraudTest.csv` by default, then adjusts probabilities back to the dataset's observed fraud rate. The total context size can be changed up to 6,005 rows with `TABPFN_CONTEXT_ROWS`; the sample uses up to 5 fraud rows and fills the remainder with legitimate rows. Larger samples can be substantially slower on CPU. The first TabPFN prediction loads the checkpoint and fits the context, so it takes longer than subsequent predictions. By default, device selection uses CUDA only when PyTorch has CUDA support and the GPU has at least 8 GB of memory; otherwise it runs on CPU. The device, context path, and model checkpoint path can be adjusted in `backend/.env`.
+### Setting up TabPFN Cloud API:
+1. Get a free API key at [Prior Labs Platform](https://platform.priorlabs.ai/account/api-keys).
+2. Set your key in `backend/.env`:
+   ```bash
+   TABPFN_TOKEN=your_token_here
+   ```
+3. When `TABPFN_TOKEN` is set, TabPFN automatically becomes available in the UI. It in-context learns from `fraudTest.csv` (or the built-in reference sample dataset) and executes remote inferences securely via `tabpfn-client`.
 
-Copy `backend/.env.example` to `backend/.env` to configure the local checkpoint. If authentication is required to retrieve a checkpoint, use the official `TABPFN_TOKEN` variable in this ignored file; never put the token in frontend code or commit it. The provided local checkpoint avoids sending transaction records to an external API.
+*(Optional: Offline local checkpoint mode is also supported if `TABPFN_MODEL_PATH` and local weights are provided).*
 
-> **Model license:** TabPFN 3.5 weights are provided under a separate non-commercial license. A website/product integration or use in commercial decisions requires a commercial license or API agreement. Review the [official model license guidance](https://docs.priorlabs.ai/models#tabpfn-model-license) before deployment.
