@@ -68,3 +68,7 @@ python main.py
 The API starts at `http://localhost:8000`. Open `http://localhost:8000/docs` to inspect the endpoints. With the frontend running at `http://localhost:5173`, users can choose the Baseline Ensemble or TabPFN 3.5 before prediction. The TabPFN option uses the local checkpoint and labeled rows from `fraudTest.csv`; transaction records are not sent to an external model service.
 
 The model files and `fraudTest.csv` are large local assets and are ignored by Git; place them in `backend/Model/` and the repository root respectively. To configure TabPFN, copy `backend/.env.example` to `backend/.env`. TabPFN 3.5 model weights require accepting Prior Labs' model license; the current model license is non-commercial and does not permit integrating local weights into a product without a separate commercial license or API agreement. The frontend endpoint can be changed from **Backend Endpoint Settings**.
+
+# Datasets:
+## patterns dataset: https://data.mendeley.com/datasets/ktbthg777x/2
+## Yearly dataset: https://www.kaggle.com/datasets/kartik2112/fraud-detection
